@@ -20,47 +20,33 @@ def connect_to_switch(ip, username, password):
         return None
 
 def execute_command(client, command):
-    """Executes a command on the switch and returns the full output."""
-    shell = client.invoke_shell()
-    shell.send(command + "\n")
-    time.sleep(2)  # Wait for the command to process
-    output = ""
-    while shell.recv_ready():
-        output += shell.recv(65535).decode('utf-8')
-        time.sleep(0.5)
+    """Executes a command on the switch using exec_command and returns the full output."""
+    stdin, stdout, stderr = client.exec_command(command)
+    time.sleep(2)  # Allow time for the command to execute
+    output = stdout.read().decode('utf-8')
+    error = stderr.read().decode('utf-8')
+    if error:
+        print(f"Error executing command '{command}': {error.strip()}")
     return output.strip()
 
-def filter_configuration(output, interface):
-    """Filters the output to show only the configuration of the selected interface."""
-    configurations = output.splitlines()
-    start = False
-    interface_config = []
-
-    for line in configurations:
-        if f"interface {interface}" in line:
-            start = True
-        if start:
-            interface_config.append(line)
-            if line.strip() == "exit":  # Stop capturing at 'exit'
-                break
-
-    return "\n".join(interface_config)
-
-def display_interface_configuration(client, interface):
+def display_interface_configuration(client, iface):
     """Displays the active configuration of a specific interface."""
-    command = f"show running-config interface {interface}"
+    command = f"show running-config interface {iface}"
     output = execute_command(client, command)
-    filtered_config = filter_configuration(output, interface)
-    print(f"\nActive configuration for interface {interface}:\n")
-    print(filtered_config)
+    
+    if not output:
+        print(f"No configuration found for interface {iface}.")
+    else:
+        print(f"\nActive configuration for interface {iface}:\n")
+        print(output)
 
-def configure_interface(client, interface, action):
+def configure_interface(client, iface, action):
     """Applies or removes security configurations on a specified interface."""
     shell = client.invoke_shell()
     shell.send("configure terminal\n")
     time.sleep(1)
 
-    shell.send(f"interface {interface}\n")
+    shell.send(f"interface {iface}\n")
     time.sleep(1)
 
     if action == "add":
@@ -143,10 +129,11 @@ def main():
             print("Invalid action. Please try again.")
             continue
 
-        for interface in interfaces:
-            print(f"\nConfiguring interface {interface}...\n")
-            configure_interface(client, interface, action)
-            display_interface_configuration(client, interface)
+        for iface in interfaces:
+            print(f"\nConfiguring interface {iface}...\n")
+            configure_interface(client, iface, action)
+            print(f"\nVerifying configuration for interface {iface}...\n")
+            display_interface_configuration(client, iface)
 
         save_configuration(client)
 
